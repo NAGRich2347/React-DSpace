@@ -1,8 +1,6 @@
-# Node
 node_modules/
-# Env 
 .env
-!.env.example
-# React Build
-client/build/
-
+dist/
+build/
+*.log
+.DS_Store

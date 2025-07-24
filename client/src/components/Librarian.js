@@ -1923,7 +1923,8 @@ export default function Librarian() {
                     </div>
                   </div>
                   {/* Upload New PDF section (separate box) */}
-                  <div style={{
+                  {/* Removed the input/button form for uploading new PDF as per requirements. Only drag-and-drop remains. */}
+                  {/* <div style={{
                     marginTop: 8,
                     padding: '8px 16px',
                     background: dark ? 'rgba(36, 18, 54, 0.95)' : 'rgba(255,255,255,0.95)',
@@ -1976,7 +1977,7 @@ export default function Librarian() {
                     <p style={{ fontSize: '0.8rem', color: dark ? '#bbaed6' : '#666', marginTop: 2 }}>
                       Drop a new PDF file here to replace the current one.
                     </p>
-                  </div>
+                  </div> */}
                 </div>
               </div>
               {/* Submission Details and Approve/Return/Send Back - Full Width */}

@@ -1840,7 +1840,7 @@ export default function Reviewer() {
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       readOnly={isReadOnly}
-                      rows={4}
+                      rows={12}
                     />
                     {editingDeadline !== null && (
                       <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>

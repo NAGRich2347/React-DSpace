@@ -456,6 +456,7 @@ export default function Reviewer() {
   const [errorMsg, setErrorMsg] = useState('');
   const [fileInputKey, setFileInputKey] = useState(0);
   const [editingDeadline, setEditingDeadline] = useState(null);
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [expandedTabs, setExpandedTabs] = useState({
     'to-review': false,
     'returned': false,
@@ -658,6 +659,13 @@ export default function Reviewer() {
       const to = new Date(filter.dateTo).getTime();
       data = data.filter(s => s.time && s.time <= to);
     }
+    if (filter.priority) {
+      if (filter.priority === 'high') {
+        data = data.filter(s => s.deadline); // Only items with due dates
+      } else if (filter.priority === 'low') {
+        data = data.filter(s => !s.deadline); // Only items without due dates
+      }
+    }
     setFiltered(data);
   }, [filter, submissions, activeTab]);
 
@@ -825,9 +833,16 @@ export default function Reviewer() {
     }
     
     const currentUser = atob(sessionStorage.getItem('authUser') || '');
-    const updatedSubs = submissions.filter(s => !(s.stage === 'Stage3' && s.approvedBy === currentUser));
+    // Get all submissions from localStorage to ensure we're working with the complete dataset
+    const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]');
     
+    // Remove submissions that belong to the current user in the 'sent' tab (Stage3 approved by this user)
+    const updatedSubs = allSubmissions.filter(s => !(s.stage === 'Stage3' && s.approvedBy === currentUser));
+    
+    // Update localStorage with the filtered submissions
     localStorage.setItem('submissions', JSON.stringify(updatedSubs));
+    
+    // Update the local state
     setSubmissions(updatedSubs);
     setSelected(null);
     setNotes('');
@@ -1219,53 +1234,205 @@ export default function Reviewer() {
       
       {/* --- Sidebar --- */}
       <div style={styles.sidebar(dark, sidebarOpen)}>
-        {/* Advanced Filter Bar */}
+        {/* Compact Search and Filter Bar */}
         <div style={{
           marginTop: 56,
-          display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 18, background: dark ? '#2a1a3a' : '#f7f7fa', borderRadius: 10, padding: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.04)'
+          display: 'flex', 
+          gap: 8, 
+          alignItems: 'center', 
+          marginBottom: 18, 
+          background: dark ? '#2a1a3a' : '#f7f7fa', 
+          borderRadius: 10, 
+          padding: 12, 
+          boxShadow: '0 1px 4px rgba(0,0,0,0.04)'
         }}>
+          {/* Search Bar */}
           <input
             type="text"
             name="user"
             value={filter.user || ''}
             onChange={handleFilterChange}
-            placeholder="Filter by user or filename"
-            aria-label="Filter by user or filename"
-            style={{ padding: 8, borderRadius: 6, border: '1.5px solid #bbaed6', minWidth: 120 }}
+            placeholder="Search by user or filename..."
+            aria-label="Search by user or filename"
+            style={{ 
+              flex: 1,
+              padding: '10px 12px', 
+              borderRadius: 6, 
+              border: '1.5px solid #bbaed6', 
+              background: dark ? '#1a1a2e' : '#fff',
+              color: dark ? '#e0d6f7' : '#201436',
+              fontSize: '0.9rem'
+            }}
           />
-          <input
-            type="text"
-            name="status"
-            value={filter.status || ''}
-            onChange={handleFilterChange}
-            placeholder="Filter by status"
-            aria-label="Filter by status"
-            style={{ padding: 8, borderRadius: 6, border: '1.5px solid #bbaed6', minWidth: 120 }}
-          />
-          <input
-            type="date"
-            name="dateFrom"
-            value={filter.dateFrom || ''}
-            onChange={handleFilterChange}
-            aria-label="From date"
-            style={{ padding: 8, borderRadius: 6, border: '1.5px solid #bbaed6' }}
-          />
-          <input
-            type="date"
-            name="dateTo"
-            value={filter.dateTo || ''}
-            onChange={handleFilterChange}
-            aria-label="To date"
-            style={{ padding: 8, borderRadius: 6, border: '1.5px solid #bbaed6' }}
-          />
-          <button
-            onClick={handleClearFilters}
-            style={{ padding: '8px 16px', borderRadius: 6, background: '#e74c3c', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}
-            aria-label="Clear filters"
-          >
-            Clear
-          </button>
-          <span style={{ fontSize: 13, color: '#888', marginLeft: 8 }}>Filters are saved automatically</span>
+          
+          {/* Filter Dropdown Button */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+              title="filter search settings"
+              style={{
+                padding: '6px 8px',
+                borderRadius: 6,
+                border: '1.5px solid #bbaed6',
+                background: dark ? '#4F2683' : '#a259e6',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                minWidth: '40px',
+                justifyContent: 'center'
+              }}
+            >
+              ⚙️
+              <span style={{ fontSize: '0.7rem' }}>▼</span>
+            </button>
+            
+            {/* Filter Dropdown Menu */}
+            {filterDropdownOpen && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: 4,
+                background: dark ? '#2a1a3a' : '#fff',
+                border: '1.5px solid #bbaed6',
+                borderRadius: 8,
+                padding: 12,
+                minWidth: 200,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                zIndex: 1000
+              }}>
+                {/* Status Filter */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: '0.8rem', 
+                    fontWeight: 600, 
+                    color: dark ? '#e0d6f7' : '#201436',
+                    marginBottom: 4
+                  }}>
+                    Status:
+                  </label>
+                  <input
+                    type="text"
+                    name="status"
+                    value={filter.status || ''}
+                    onChange={handleFilterChange}
+                    placeholder="Filter by status"
+                    style={{ 
+                      width: '100%',
+                      padding: '6px 8px', 
+                      borderRadius: 4, 
+                      border: '1px solid #bbaed6',
+                      background: dark ? '#1a1a2e' : '#f9f9f9',
+                      color: dark ? '#e0d6f7' : '#201436',
+                      fontSize: '0.8rem'
+                    }}
+                  />
+                </div>
+                
+                {/* Date Range */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: '0.8rem', 
+                    fontWeight: 600, 
+                    color: dark ? '#e0d6f7' : '#201436',
+                    marginBottom: 4
+                  }}>
+                    Date Range:
+                  </label>
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                    <input
+                      type="date"
+                      name="dateFrom"
+                      value={filter.dateFrom || ''}
+                      onChange={handleFilterChange}
+                      style={{ 
+                        flex: 1,
+                        padding: '6px 8px', 
+                        borderRadius: 4, 
+                        border: '1px solid #bbaed6',
+                        background: dark ? '#1a1a2e' : '#f9f9f9',
+                        color: dark ? '#e0d6f7' : '#201436',
+                        fontSize: '0.8rem'
+                      }}
+                    />
+                    <input
+                      type="date"
+                      name="dateTo"
+                      value={filter.dateTo || ''}
+                      onChange={handleFilterChange}
+                      style={{ 
+                        flex: 1,
+                        padding: '6px 8px', 
+                        borderRadius: 4, 
+                        border: '1px solid #bbaed6',
+                        background: dark ? '#1a1a2e' : '#f9f9f9',
+                        color: dark ? '#e0d6f7' : '#201436',
+                        fontSize: '0.8rem'
+                      }}
+                    />
+                  </div>
+                </div>
+                
+                {/* Priority Filter */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: '0.8rem', 
+                    fontWeight: 600, 
+                    color: dark ? '#e0d6f7' : '#201436',
+                    marginBottom: 4
+                  }}>
+                    Priority:
+                  </label>
+                  <select
+                    name="priority"
+                    value={filter.priority || ''}
+                    onChange={handleFilterChange}
+                    style={{ 
+                      width: '100%',
+                      padding: '6px 8px', 
+                      borderRadius: 4, 
+                      border: '1px solid #bbaed6',
+                      background: dark ? '#1a1a2e' : '#f9f9f9',
+                      color: dark ? '#e0d6f7' : '#201436',
+                      fontSize: '0.8rem'
+                    }}
+                  >
+                    <option value="">All items</option>
+                    <option value="high">Highest Priority (with due date)</option>
+                    <option value="low">No due date</option>
+                  </select>
+                </div>
+                
+                {/* Clear Filters Button */}
+                <button
+                  onClick={() => {
+                    handleClearFilters();
+                    setFilterDropdownOpen(false);
+                  }}
+                  style={{ 
+                    width: '100%',
+                    padding: '8px 12px', 
+                    borderRadius: 4, 
+                    background: '#e74c3c', 
+                    color: '#fff', 
+                    border: 'none', 
+                    fontWeight: 600, 
+                    cursor: 'pointer',
+                    fontSize: '0.8rem'
+                  }}
+                >
+                  Clear All Filters
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         
         {/* Tab Navigation with Dropdown Menus */}
@@ -1454,43 +1621,75 @@ export default function Reviewer() {
               <span style={{ fontSize: '0.8rem' }}>{expandedTabs['sent'] ? '▼' : '▶'}</span>
             </button>
             {expandedTabs['sent'] && (
-              <div style={{
-                maxHeight: '200px',
-                overflowY: 'auto',
-                marginBottom: '0.5rem',
-                border: `1px solid ${dark ? '#4a5568' : '#e2e8f0'}`,
-                borderRadius: '4px',
-                background: dark ? '#2a1a3a' : '#f9f9f9',
-              }}>
-                {filtered.map((s, i) => {
-                  const displayInfo = getDisplayFilenameWithBreaks(s);
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        ...styles.submissionItem(dark, selected?.filename === s.filename),
-                        ...(hoverIdx === i ? { background: dark ? '#444' : '#eaeaea' } : {}),
-                        padding: '0.5rem 0.75rem',
-                        margin: '0.25rem',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.8rem',
-                        border: selected?.filename === s.filename ? '2px solid #4F2683' : '1px solid transparent',
-                      }}
-                      onMouseEnter={() => setHoverIdx(i)}
-                      onMouseLeave={() => setHoverIdx(-1)}
-                      onClick={() => selectSubmission(s, i)}
-                    >
-                      <span style={{ 
-                        whiteSpace: displayInfo.hasBreaks ? 'pre-line' : 'nowrap',
-                        lineHeight: displayInfo.hasBreaks ? '1.2' : 'normal'
-                      }}>
-                        {displayInfo.displayText}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+              <>
+                <div style={{
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                  marginBottom: '0.25rem',
+                  border: `1px solid ${dark ? '#4a5568' : '#e2e8f0'}`,
+                  borderRadius: '4px',
+                  background: dark ? '#2a1a3a' : '#f9f9f9',
+                }}>
+                  {filtered.map((s, i) => {
+                    const displayInfo = getDisplayFilenameWithBreaks(s);
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          ...styles.submissionItem(dark, selected?.filename === s.filename),
+                          ...(hoverIdx === i ? { background: dark ? '#444' : '#eaeaea' } : {}),
+                          padding: '0.5rem 0.75rem',
+                          margin: '0.25rem',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '0.8rem',
+                          border: selected?.filename === s.filename ? '2px solid #4F2683' : '1px solid transparent',
+                        }}
+                        onMouseEnter={() => setHoverIdx(i)}
+                        onMouseLeave={() => setHoverIdx(-1)}
+                        onClick={() => selectSubmission(s, i)}
+                      >
+                        <span style={{ 
+                          whiteSpace: displayInfo.hasBreaks ? 'pre-line' : 'nowrap',
+                          lineHeight: displayInfo.hasBreaks ? '1.2' : 'normal'
+                        }}>
+                          {displayInfo.displayText}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Clear History Button - sliding extension */}
+                <button
+                  onClick={clearHistory}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem 1rem',
+                    marginBottom: '0.5rem',
+                    background: '#dc2626',
+                    color: '#ffffff',
+                    border: '1.5px solid #dc2626',
+                    borderRadius: '0 0 6px 6px',
+                    cursor: 'pointer',
+                    fontFamily: "'BentonSans Book'",
+                    fontSize: '0.8rem',
+                    fontWeight: 500,
+                    transition: 'all 0.3s ease',
+                    textAlign: 'center',
+                    marginTop: '0',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = '#b91c1c';
+                    e.target.style.borderColor = '#b91c1c';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = '#dc2626';
+                    e.target.style.borderColor = '#dc2626';
+                  }}
+                >
+                  🗑️ Clear History
+                </button>
+              </>
             )}
           </div>
 
@@ -1567,37 +1766,7 @@ export default function Reviewer() {
             )}
           </div>
 
-          {/* Clear History Button - only show when on sent tab */}
-          {activeTab === 'sent' && (
-            <button
-              onClick={clearHistory}
-              style={{
-                width: '100%',
-                padding: '0.5rem 1rem',
-                marginBottom: '0.5rem',
-                background: '#dc2626',
-                color: '#ffffff',
-                border: '1.5px solid #dc2626',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontFamily: "'BentonSans Book'",
-                fontSize: '0.8rem',
-                fontWeight: 500,
-                transition: 'all 0.3s ease',
-                textAlign: 'center',
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.backgroundColor = '#b91c1c';
-                e.target.style.borderColor = '#b91c1c';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.backgroundColor = '#dc2626';
-                e.target.style.borderColor = '#dc2626';
-              }}
-            >
-              🗑️ Clear History
-            </button>
-          )}
+
         </div>
       </div>
       
@@ -1826,6 +1995,9 @@ export default function Reviewer() {
                     color: dark ? '#e0d6f7' : '#201436',
                     width: '100%',
                     textAlign: 'left',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minHeight: '200px',
                   }}>
                     <div style={{ fontWeight: 600, marginBottom: 4, color: dark ? '#e0d6f7' : '#201436' }}>
                       📝 Notes and Deadline
@@ -1835,12 +2007,14 @@ export default function Reviewer() {
                         ...styles.textarea(dark),
                         opacity: isReadOnly ? 0.6 : 1,
                         cursor: isReadOnly ? 'not-allowed' : 'text',
+                        flex: 1,
+                        minHeight: '120px',
                       }}
-                      placeholder={isReadOnly ? "Read-only mode" : "Add notes or set a deadline (YYYY-MM-DD)"}
+                      placeholder={isReadOnly ? "Read-only mode" : "Add notes or set a deadline"}
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       readOnly={isReadOnly}
-                      rows={4}
+                      rows={12}
                     />
                     {editingDeadline !== null && (
                       <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1881,7 +2055,7 @@ export default function Reviewer() {
                         </button>
                       </div>
                     )}
-                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ marginTop: 'auto', paddingTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ color: dark ? '#e0d6f7' : '#201436', fontSize: '0.9rem' }}>
                         Current Deadline:
                       </span>
@@ -1913,7 +2087,8 @@ export default function Reviewer() {
                     </div>
                   </div>
                   {/* Upload New PDF section (separate box) */}
-                  <div style={{
+                  {/* Removed the input/button form for uploading new PDF as per requirements. Only drag-and-drop remains. */}
+                  {/* <div style={{
                     marginTop: 8,
                     padding: '8px 16px',
                     background: dark ? 'rgba(36, 18, 54, 0.95)' : 'rgba(255,255,255,0.95)',
@@ -1966,7 +2141,7 @@ export default function Reviewer() {
                     <p style={{ fontSize: '0.8rem', color: dark ? '#bbaed6' : '#666', marginTop: 2 }}>
                       Drop a new PDF file here to replace the current one.
                     </p>
-                  </div>
+                  </div> */}
                 </div>
               </div>
               {/* Submission Details and Approve/Return/Send Back - Full Width */}

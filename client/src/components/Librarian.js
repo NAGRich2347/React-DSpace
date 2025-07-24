@@ -1824,18 +1824,22 @@ export default function Librarian() {
 
                 </div>
                 {/* Right: Notes and Deadline section */}
-                <div style={{ flex: 1, minWidth: 320, maxWidth: 480, alignSelf: 'flex-start', paddingRight: '32px' }}>
+                <div style={{ flex: 1, minWidth: 400, maxWidth: 480, alignSelf: 'flex-start', paddingRight: '32px' }}>
                   {/* Notes and Deadline section (moved here) */}
                   <div style={{
                     marginTop: 0,
-                    padding: '12px 16px',
-                    background: dark ? 'rgba(36, 18, 54, 0.95)' : 'rgba(255,255,255,0.95)',
+                    padding: '2rem',
+                    background: dark ? '#2a1a3a' : '#f9f9f9',
                     borderRadius: 8,
-                    border: `1px solid ${dark ? '#4F2683' : '#bbaed6'}`,
+                    border: `2px solid #ccc`,
                     fontSize: '0.9rem',
                     color: dark ? '#e0d6f7' : '#201436',
                     width: '100%',
+                    minHeight: 300,
                     textAlign: 'left',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    boxSizing: 'border-box',
                   }}>
                     <div style={{ fontWeight: 600, marginBottom: 4, color: dark ? '#e0d6f7' : '#201436' }}>
                       📝 Notes and Deadline

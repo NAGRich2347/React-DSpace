@@ -1895,7 +1895,6 @@ export default function Reviewer() {
               onClick={() => {
                 handleTabChange('sent-back');
                 setSelected(null);
-                setNotes('');
               }}
               style={{
                 width: '100%',
@@ -2428,7 +2427,6 @@ export default function Reviewer() {
                             localStorage.setItem('submissions', JSON.stringify(updatedSubs));
                             setSubmissions(updatedSubs);
                             setSelected(null);
-                            setNotes('');
                             setFileInputKey(Date.now());
                           }
                         }}

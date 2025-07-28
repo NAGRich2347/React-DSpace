@@ -450,10 +450,14 @@ export default function Librarian() {
   });
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState('to-review');
-  const [notes, setNotes] = useState('');
+  // Replace single notes state with per-document cache
+  const [notesCache, setNotesCache] = useState(() => {
+    const saved = localStorage.getItem('librarianNotesCache');
+    return saved ? JSON.parse(saved) : {};
+  });
   const [dragOver, setDragOver] = useState(false);
   const [btnHover, setBtnHover] = useState(false);
-  const [hoverIdx, setHoverIdx] = useState(-1);
+  // Removed global hoverIdx - now using tab-specific hover states
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -471,6 +475,43 @@ export default function Librarian() {
     const saved = localStorage.getItem('receipts');
     return saved ? JSON.parse(saved) : {};
   });
+
+  // Replace the global hoverIdx with tab-specific hover states
+  const [hoverStates, setHoverStates] = useState({
+    'to-review': -1,
+    'returned': -1,
+    'sent': -1,
+    'sent-back': -1
+  });
+
+  // Helper function to update hover state for a specific tab
+  const setHoverForTab = (tab, index) => {
+    setHoverStates(prev => ({
+      ...prev,
+      [tab]: index
+    }));
+  };
+
+  // Helper function to get hover state for a specific tab
+  const getHoverForTab = (tab) => {
+    return hoverStates[tab] || -1;
+  };
+
+  // Helper function to handle notes changes and save to cache
+  const handleNotesChange = (e) => {
+    if (!selected) return;
+    const newValue = e.target.value;
+    setNotesCache(prev => ({
+      ...prev,
+      [selected.filename]: newValue
+    }));
+  };
+
+  // Helper function to get current notes for selected document
+  const getCurrentNotes = () => {
+    if (!selected) return '';
+    return notesCache[selected.filename] || '';
+  };
 
   // Toggle tab expansion
   const toggleTabExpansion = (tab) => {
@@ -498,57 +539,16 @@ export default function Librarian() {
   useEffect(() => {
     const user = atob(sessionStorage.getItem('authUser') || '');
     localStorage.setItem(`librarianFilter_${user}`, JSON.stringify(filter));
-    let data = [...submissions];
     
-    // Deduplicate by base filename, keeping only the most recent submission
-    const dedupedMap = new Map();
-    for (const sub of data) {
-      const base = sub.filename.replace(/_Stage\d+\.pdf$/i, '');
-      if (!dedupedMap.has(base) || (sub.time > dedupedMap.get(base).time)) {
-        dedupedMap.set(base, sub);
-      }
-    }
-    data = Array.from(dedupedMap.values());
-    
-    // Filter by active tab - Librarian can see Stage 1 and Stage 2 documents
-    if (activeTab === 'to-review') {
-      // Show Stage 1 documents (initial submissions) and Stage 2 documents that haven't been sent to reviewer
-      data = data.filter(s => (s.stage === 'Stage1' && !s.returnedFromReview) || (s.stage === 'Stage2' && !s.sentToReviewer));
-    } else if (activeTab === 'returned') {
-      // Show Stage 2 documents that have been returned from reviewer
-      data = data.filter(s => s.stage === 'Stage2' && s.returnedFromReview);
-    } else if (activeTab === 'sent') {
-      // Show all documents that have been sent to reviewer by this librarian (any stage)
-      data = data.filter(s => s.sentBy === user);
-    } else if (activeTab === 'sent-back') {
-      // Show Stage 1 documents that have been sent back to students by this librarian
-      data = data.filter(s => s.stage === 'Stage1' && s.sentBackToStudent && s.sentBackBy === user);
-    }
-    
-    // Apply additional filters
-    if (filter.user) {
-      data = data.filter(s => (s.user || s.filename || '').toLowerCase().includes(filter.user.toLowerCase()));
-    }
-    if (filter.status) {
-      data = data.filter(s => (s.status || s.stage || '').toLowerCase().includes(filter.status.toLowerCase()));
-    }
-    if (filter.dateFrom) {
-      const from = new Date(filter.dateFrom).getTime();
-      data = data.filter(s => s.time && s.time >= from);
-    }
-    if (filter.dateTo) {
-      const to = new Date(filter.dateTo).getTime();
-      data = data.filter(s => s.time && s.time <= to);
-    }
-    if (filter.priority) {
-      if (filter.priority === 'high') {
-        data = data.filter(s => s.deadline); // Only items with due dates
-      } else if (filter.priority === 'low') {
-        data = data.filter(s => !s.deadline); // Only items without due dates
-      }
-    }
+    // Use the helper function to get filtered data for the active tab
+    const data = getFilteredDataForTab(activeTab);
     setFiltered(data);
-  }, [filter, submissions, activeTab]);
+    
+    // Clear selection if selected document is not in current tab's filtered data
+    if (selected && !data.find(s => s.filename === selected.filename)) {
+      setSelected(null);
+    }
+  }, [filter, submissions, activeTab, selected]);
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
@@ -615,21 +615,19 @@ export default function Librarian() {
     
     setSubmissions(processedSubmissions); // Set processed submissions
     
-    // Restore previous session state (selected document, notes, scroll position)
-    const savedNotes = localStorage.getItem('librarianNotes');
+    // Restore previous session state (selected document, scroll position)
     const savedScroll = localStorage.getItem('librarianScroll');
-    if (savedNotes) setNotes(savedNotes); // Restore notes
     if (savedScroll) window.scrollTo(0, parseInt(savedScroll, 10)); // Restore scroll position
   }, []);
 
-  // Persist notes, selected, and scroll position
+  // Persist notes cache, selected, and scroll position
   useEffect(() => {
     if (selected) localStorage.setItem('librarianSelected', getDisplayFilename(selected));
-    if (notes !== undefined) localStorage.setItem('librarianNotes', notes);
+    localStorage.setItem('librarianNotesCache', JSON.stringify(notesCache));
     const onScroll = () => localStorage.setItem('librarianScroll', window.scrollY);
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
-  }, [selected, notes]);
+  }, [selected, notesCache]);
 
   // Auto-refresh submissions every second when user is online
   useEffect(() => {
@@ -680,8 +678,40 @@ export default function Librarian() {
   }, []);
 
   // Select a submission
+  const handleTabChange = (newTab) => {
+    // Shrink previous tab, expand new tab
+    setExpandedTabs(prev => {
+      const newExpandedTabs = {};
+      Object.keys(prev).forEach(tab => {
+        newExpandedTabs[tab] = tab === newTab;
+      });
+      return newExpandedTabs;
+    });
+    setActiveTab(newTab);
+  };
+
   const selectSubmission = (s, idx) => {
     if (confirmOn && !window.confirm('Select submission?')) return;
+    
+    // Determine which tab this document belongs to and switch to it
+    const user = atob(sessionStorage.getItem('authUser') || '');
+    let targetTab = 'to-review'; // default
+    
+    if (s.sentBy === user) {
+      targetTab = 'sent';
+    } else if (s.stage === 'Stage2' && s.returnedFromReview) {
+      targetTab = 'returned';
+    } else if (s.stage === 'Stage2' && !s.returnedFromReview) {
+      targetTab = 'to-review';
+    } else if (s.stage === 'Stage1' && s.sentBackBy === user) {
+      targetTab = 'sent-back';
+    }
+    
+    // Switch to the correct tab if not already there
+    if (activeTab !== targetTab) {
+      handleTabChange(targetTab);
+    }
+    
     const newReceipts = { ...receipts, [s.filename]: true };
     setReceipts(newReceipts);
     localStorage.setItem('receipts', JSON.stringify(newReceipts));
@@ -716,6 +746,15 @@ export default function Librarian() {
       sentBy: currentUser
     };
     updatedSubsToReviewer.push(newSel);
+    
+    // Remove from previous user's history (student who submitted it)
+    if (selected.user) {
+      // This document will no longer appear in the student's submission list
+      // as it's now sent to reviewer
+      // The filtering logic in getFilteredDataForTab will handle this automatically
+      // since the document now has stage 'Stage2' and sentToReviewer set to true
+    }
+    
     // Convert File objects to base64 for localStorage
     const serializableSubs = await Promise.all(updatedSubsToReviewer.map(async sub => {
       if (sub.file instanceof File) {
@@ -736,7 +775,12 @@ export default function Librarian() {
     localStorage.setItem('submissions', JSON.stringify(serializableSubs));
     setSubmissions(updatedSubsToReviewer);
     setSelected(null);
-    setNotes('');
+    // Clear notes for this document from cache
+    setNotesCache(prev => {
+      const newCache = { ...prev };
+      delete newCache[selected.filename];
+      return newCache;
+    });
     setFileInputKey(Date.now()); // Reset file input
     setSuccessMsg('Sent to Reviewer!');
     setTimeout(() => setSuccessMsg(''), 5000);
@@ -744,62 +788,7 @@ export default function Librarian() {
   };
 
   // Send returned document back to final review
-  const sendReturnedToFinalReview = async () => {
-    if (!selected) return window.alert('Select one');
-    if (confirmOn && !window.confirm('Send returned document back to final review?')) return;
-    const updatedSubs = submissions.filter(x => x !== selected);
-    
-    // Get current librarian name
-    const currentUser = atob(sessionStorage.getItem('authUser') || '');
-    
-    // Remove any previous Stage2 version with the same base name
-    const baseNameReturned = selected.filename.replace(/_Stage\d+\.pdf$/i, '');
-    const updatedSubsReturned = submissions.filter(x => {
-      const xBase = x.filename.replace(/_Stage\d+\.pdf$/i, '');
-      // Remove if same base name and stage is Stage2
-      return !(xBase === baseNameReturned && x.stage === 'Stage2');
-    }).filter(x => x !== selected);
-    // Automatically rename the file to Stage2
-    const newFilename2 = autoRenameFile(selected.filename, 'Stage2', currentUser, false);
-    const newSel2 = { 
-      ...selected, 
-      stage: 'Stage2', 
-      filename: newFilename2,
-      time: Date.now(),
-      returnedFromReview: false, // Remove the returnedFromReview flag
-      sentToReviewer: true,
-      sentBy: currentUser
-    };
-    updatedSubsReturned.push(newSel2);
-    
-    // Convert File objects to base64 for localStorage
-    const serializableSubs = await Promise.all(updatedSubsReturned.map(async sub => {
-      if (sub.file instanceof File) {
-        // Convert File to base64
-        const base64 = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result.split(',')[1]);
-          reader.readAsDataURL(sub.file);
-        });
-        
-        return {
-          ...sub,
-          content: base64,
-          file: null // Remove File object for serialization
-        };
-      }
-      return sub;
-    }));
-    
-    localStorage.setItem('submissions', JSON.stringify(serializableSubs));
-    setSubmissions(updatedSubsReturned);
-    setSelected(null);
-    setNotes('');
-    setFileInputKey(Date.now()); // Reset file input
-    setSuccessMsg('Sent to Final Review!');
-    setTimeout(() => setSuccessMsg(''), 5000);
-    window.alert('Sent to Final Review');
-  };
+
 
   // Send back to student
   const sendBackToStudent = async () => {
@@ -824,6 +813,14 @@ export default function Librarian() {
       time: Date.now() 
     };
     updatedSubs.push(newSel);
+    
+    // Remove from previous user's history (student who submitted it)
+    if (selected.user) {
+      // This document will no longer appear in the student's submission list
+      // as it's now sent back to student
+      // The filtering logic in getFilteredDataForTab will handle this automatically
+      // since the document now has stage 'Stage0' and will appear in student's submission list
+    }
     
     // Convert File objects to base64 for localStorage
     const serializableSubs = await Promise.all(updatedSubs.map(async sub => {
@@ -873,10 +870,80 @@ export default function Librarian() {
     localStorage.setItem('userNotifications', JSON.stringify(notifications));
     
     setSelected(null);
-    setNotes('');
+    // Clear notes for this document from cache
+    setNotesCache(prev => {
+      const newCache = { ...prev };
+      delete newCache[selected.filename];
+      return newCache;
+    });
     setFileInputKey(Date.now()); // Reset file input
     setSuccessMsg('Sent back to Student!');
     setTimeout(() => setSuccessMsg(''), 5000);
+  };
+
+  // Undo submission - move from sent back to to-review (for documents sent to reviewer)
+  const undoSubmission = async () => {
+    if (!selected) return window.alert('Select one');
+    if (confirmOn && !window.confirm('Undo submission and move back to review queue?')) return;
+    
+    const updatedSubs = submissions.filter(x => x !== selected);
+    const currentUser = atob(sessionStorage.getItem('authUser') || '');
+    
+    // Move from Stage2 back to Stage1 (to-review)
+    const newFilename = autoRenameFile(selected.filename, 'Stage1', currentUser, false);
+    const undoneSubmission = { 
+      ...selected, 
+      stage: 'Stage1', 
+      filename: newFilename,
+      time: Date.now(),
+      sentToReviewer: false, // Remove sent to reviewer flag
+      sentBy: null // Remove sent by flag
+    };
+    updatedSubs.push(undoneSubmission);
+    
+    // Convert File objects to base64 for localStorage
+    const serializableSubs = await Promise.all(updatedSubs.map(async sub => {
+      if (sub.file instanceof File) {
+        // Convert File to base64
+        const base64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.readAsDataURL(sub.file);
+        });
+        return {
+          ...sub,
+          content: base64,
+          file: null // Remove File object for serialization
+        };
+      }
+      return sub;
+    }));
+    
+    // Log the undo action
+    const adminLog = JSON.parse(localStorage.getItem('adminLog') || '[]');
+    adminLog.push({
+      time: Date.now(),
+      user: currentUser,
+      stage: 'UNDO_SEND_TO_REVIEWER',
+      filename: selected.filename,
+      notes: `Undone by ${currentUser} and moved back to review queue`,
+      action: 'undo_send_to_reviewer'
+    });
+    localStorage.setItem('adminLog', JSON.stringify(adminLog));
+    
+    localStorage.setItem('submissions', JSON.stringify(serializableSubs));
+    setSubmissions(updatedSubs);
+    setSelected(null);
+    // Clear notes for this document from cache
+    setNotesCache(prev => {
+      const newCache = { ...prev };
+      delete newCache[selected.filename];
+      return newCache;
+    });
+    setFileInputKey(Date.now());
+    setSuccessMsg('Submission undone and moved back to review queue!');
+    setTimeout(() => setSuccessMsg(''), 5000);
+    window.alert('Submission undone and moved back to review queue!');
   };
 
   // Clear submission history for the current user
@@ -898,7 +965,8 @@ export default function Librarian() {
     // Update the local state
     setSubmissions(updatedSubs);
     setSelected(null);
-    setNotes('');
+    // Clear all notes cache for this user
+    setNotesCache({});
     setSuccessMsg('Submission history cleared!');
     setTimeout(() => setSuccessMsg(''), 5000);
   };
@@ -1162,8 +1230,8 @@ export default function Librarian() {
   };
 
   // Helper to get deduplicated count for each tab
-  const getTabCount = (tab) => {
-    // Use the same filtering logic as the filtered array
+  // Helper function to get filtered data for a specific tab
+  const getFilteredDataForTab = (tab) => {
     let data = [...submissions];
     
     // Deduplicate by base filename, keeping only the most recent submission
@@ -1176,7 +1244,7 @@ export default function Librarian() {
     }
     data = Array.from(dedupedMap.values());
     
-    // Filter by active tab - same logic as filtered array
+    // Filter by specific tab
     const user = atob(sessionStorage.getItem('authUser') || '');
     if (tab === 'to-review') {
       // Show Stage 1 documents (initial submissions) and Stage 2 documents that haven't been sent to reviewer
@@ -1192,7 +1260,34 @@ export default function Librarian() {
       data = data.filter(s => s.stage === 'Stage1' && s.sentBackToStudent && s.sentBackBy === user);
     }
     
-    return data.length;
+    // Apply additional filters
+    if (filter.user) {
+      data = data.filter(s => (s.user || s.filename || '').toLowerCase().includes(filter.user.toLowerCase()));
+    }
+    if (filter.status) {
+      data = data.filter(s => (s.status || s.stage || '').toLowerCase().includes(filter.status.toLowerCase()));
+    }
+    if (filter.dateFrom) {
+      const from = new Date(filter.dateFrom).getTime();
+      data = data.filter(s => s.time && s.time >= from);
+    }
+    if (filter.dateTo) {
+      const to = new Date(filter.dateTo).getTime();
+      data = data.filter(s => s.time && s.time <= to);
+    }
+    if (filter.priority) {
+      if (filter.priority === 'high') {
+        data = data.filter(s => s.deadline); // Only items with due dates
+      } else if (filter.priority === 'low') {
+        data = data.filter(s => !s.deadline); // Only items without due dates
+      }
+    }
+    
+    return data;
+  };
+
+  const getTabCount = (tab) => {
+    return getFilteredDataForTab(tab).length;
   };
 
   return (
@@ -1491,10 +1586,8 @@ export default function Librarian() {
           <div>
             <button
               onClick={() => {
-                setActiveTab('to-review');
+                handleTabChange('to-review');
                 setSelected(null);
-                setNotes('');
-                toggleTabExpansion('to-review');
               }}
               style={{
                 width: '100%',
@@ -1519,23 +1612,26 @@ export default function Librarian() {
               <span>📋 To Review ({getTabCount('to-review')})</span>
               <span style={{ fontSize: '0.8rem' }}>{expandedTabs['to-review'] ? '▼' : '▶'}</span>
             </button>
-            {expandedTabs['to-review'] && (
-              <div style={{
-                maxHeight: '200px',
-                overflowY: 'auto',
-                marginBottom: '0.5rem',
-                border: `1px solid ${dark ? '#4a5568' : '#e2e8f0'}`,
-                borderRadius: '4px',
-                background: dark ? '#2a1a3a' : '#f9f9f9',
-              }}>
-                {filtered.map((s, i) => {
+            <div style={{
+              maxHeight: expandedTabs['to-review'] ? '200px' : '0px',
+              overflowY: 'auto',
+              marginBottom: '0.5rem',
+              border: `1px solid ${dark ? '#4a5568' : '#e2e8f0'}`,
+              borderRadius: '4px',
+              background: dark ? '#2a1a3a' : '#f9f9f9',
+              transition: 'max-height 0.3s ease-in-out, opacity 0.3s ease-in-out',
+              opacity: expandedTabs['to-review'] ? 1 : 0,
+              transform: expandedTabs['to-review'] ? 'translateY(0)' : 'translateY(-10px)',
+              transformOrigin: 'top',
+            }}>
+                {getFilteredDataForTab('to-review').map((s, i) => {
                   const displayInfo = getDisplayFilenameWithBreaks(s);
                   return (
                     <div
                       key={i}
                       style={{
                         ...styles.submissionItem(dark, selected?.filename === s.filename),
-                        ...(hoverIdx === i ? { background: dark ? '#444' : '#eaeaea' } : {}),
+                        ...(hoverStates['to-review'] === i ? { background: dark ? '#444' : '#eaeaea' } : {}),
                         padding: '0.5rem 0.75rem',
                         margin: '0.25rem',
                         borderRadius: '4px',
@@ -1543,8 +1639,8 @@ export default function Librarian() {
                         fontSize: '0.8rem',
                         border: selected?.filename === s.filename ? '2px solid #4F2683' : '1px solid transparent',
                       }}
-                      onMouseEnter={() => setHoverIdx(i)}
-                      onMouseLeave={() => setHoverIdx(-1)}
+                      onMouseEnter={() => setHoverForTab('to-review', i)}
+                      onMouseLeave={() => setHoverForTab('to-review', -1)}
                       onClick={() => selectSubmission(s, i)}
                     >
                       <span style={{ 
@@ -1557,17 +1653,14 @@ export default function Librarian() {
                   );
                 })}
               </div>
-            )}
           </div>
 
           {/* Returned to Me Tab */}
           <div>
             <button
               onClick={() => {
-                setActiveTab('returned');
+                handleTabChange('returned');
                 setSelected(null);
-                setNotes('');
-                toggleTabExpansion('returned');
               }}
               style={{
                 width: '100%',
@@ -1592,23 +1685,26 @@ export default function Librarian() {
               <span>↩️ Returned to Me ({getTabCount('returned')})</span>
               <span style={{ fontSize: '0.8rem' }}>{expandedTabs['returned'] ? '▼' : '▶'}</span>
             </button>
-            {expandedTabs['returned'] && (
-              <div style={{
-                maxHeight: '200px',
-                overflowY: 'auto',
-                marginBottom: '0.5rem',
-                border: `1px solid ${dark ? '#4a5568' : '#e2e8f0'}`,
-                borderRadius: '4px',
-                background: dark ? '#2a1a3a' : '#f9f9f9',
-              }}>
-                {filtered.map((s, i) => {
+            <div style={{
+              maxHeight: expandedTabs['returned'] ? '200px' : '0px',
+              overflowY: 'auto',
+              marginBottom: '0.5rem',
+              border: `1px solid ${dark ? '#4a5568' : '#e2e8f0'}`,
+              borderRadius: '4px',
+              background: dark ? '#2a1a3a' : '#f9f9f9',
+              transition: 'max-height 0.3s ease-in-out, opacity 0.3s ease-in-out',
+              opacity: expandedTabs['returned'] ? 1 : 0,
+              transform: expandedTabs['returned'] ? 'translateY(0)' : 'translateY(-10px)',
+              transformOrigin: 'top',
+            }}>
+                {getFilteredDataForTab('returned').map((s, i) => {
                   const displayInfo = getDisplayFilenameWithBreaks(s);
                   return (
                     <div
                       key={i}
                       style={{
                         ...styles.submissionItem(dark, selected?.filename === s.filename),
-                        ...(hoverIdx === i ? { background: dark ? '#444' : '#eaeaea' } : {}),
+                        ...(hoverStates['returned'] === i ? { background: dark ? '#444' : '#eaeaea' } : {}),
                         padding: '0.5rem 0.75rem',
                         margin: '0.25rem',
                         borderRadius: '4px',
@@ -1616,8 +1712,8 @@ export default function Librarian() {
                         fontSize: '0.8rem',
                         border: selected?.filename === s.filename ? '2px solid #4F2683' : '1px solid transparent',
                       }}
-                      onMouseEnter={() => setHoverIdx(i)}
-                      onMouseLeave={() => setHoverIdx(-1)}
+                      onMouseEnter={() => setHoverForTab('returned', i)}
+                      onMouseLeave={() => setHoverForTab('returned', -1)}
                       onClick={() => selectSubmission(s, i)}
                     >
                       <span style={{ 
@@ -1630,17 +1726,14 @@ export default function Librarian() {
                   );
                 })}
               </div>
-            )}
           </div>
 
           {/* Submission History Tab */}
           <div>
             <button
               onClick={() => {
-                setActiveTab('sent');
+                handleTabChange('sent');
                 setSelected(null);
-                setNotes('');
-                toggleTabExpansion('sent');
               }}
               style={{
                 width: '100%',
@@ -1665,24 +1758,26 @@ export default function Librarian() {
               <span>📚 Submission History ({getTabCount('sent')})</span>
               <span style={{ fontSize: '0.8rem' }}>{expandedTabs['sent'] ? '▼' : '▶'}</span>
             </button>
-            {expandedTabs['sent'] && (
-              <>
-                <div style={{
-                  maxHeight: '200px',
-                  overflowY: 'auto',
-                  marginBottom: '0.25rem',
-                  border: `1px solid ${dark ? '#4a5568' : '#e2e8f0'}`,
-                  borderRadius: '4px',
-                  background: dark ? '#2a1a3a' : '#f9f9f9',
-                }}>
-                  {filtered.map((s, i) => {
+            <div style={{
+              maxHeight: expandedTabs['sent'] ? '200px' : '0px',
+              overflowY: 'auto',
+              marginBottom: '0.25rem',
+              border: `1px solid ${dark ? '#4a5568' : '#e2e8f0'}`,
+              borderRadius: '4px',
+              background: dark ? '#2a1a3a' : '#f9f9f9',
+              transition: 'max-height 0.3s ease-in-out, opacity 0.3s ease-in-out',
+              opacity: expandedTabs['sent'] ? 1 : 0,
+              transform: expandedTabs['sent'] ? 'translateY(0)' : 'translateY(-10px)',
+              transformOrigin: 'top',
+            }}>
+                  {getFilteredDataForTab('sent').map((s, i) => {
                     const displayInfo = getDisplayFilenameWithBreaks(s);
                     return (
                       <div
                         key={i}
                         style={{
                           ...styles.submissionItem(dark, selected?.filename === s.filename),
-                          ...(hoverIdx === i ? { background: dark ? '#444' : '#eaeaea' } : {}),
+                          ...(hoverStates['sent'] === i ? { background: dark ? '#444' : '#eaeaea' } : {}),
                           padding: '0.5rem 0.75rem',
                           margin: '0.25rem',
                           borderRadius: '4px',
@@ -1690,8 +1785,8 @@ export default function Librarian() {
                           fontSize: '0.8rem',
                           border: selected?.filename === s.filename ? '2px solid #4F2683' : '1px solid transparent',
                         }}
-                        onMouseEnter={() => setHoverIdx(i)}
-                        onMouseLeave={() => setHoverIdx(-1)}
+                        onMouseEnter={() => setHoverForTab('sent', i)}
+                        onMouseLeave={() => setHoverForTab('sent', -1)}
                         onClick={() => selectSubmission(s, i)}
                       >
                         <span style={{ 
@@ -1705,47 +1800,45 @@ export default function Librarian() {
                   })}
                 </div>
                 {/* Clear History Button - sliding extension */}
-                <button
-                  onClick={clearHistory}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem 1rem',
-                    marginBottom: '0.5rem',
-                    background: '#dc2626',
-                    color: '#ffffff',
-                    border: '1.5px solid #dc2626',
-                    borderRadius: '0 0 6px 6px',
-                    cursor: 'pointer',
-                    fontFamily: "'BentonSans Book'",
-                    fontSize: '0.8rem',
-                    fontWeight: 500,
-                    transition: 'all 0.3s ease',
-                    textAlign: 'center',
-                    marginTop: '0',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = '#b91c1c';
-                    e.target.style.borderColor = '#b91c1c';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = '#dc2626';
-                    e.target.style.borderColor = '#dc2626';
-                  }}
-                >
-                  🗑️ Clear History
-                </button>
-              </>
-            )}
+                {expandedTabs['sent'] && (
+                  <button
+                    onClick={clearHistory}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 1rem',
+                      marginBottom: '0.5rem',
+                      background: '#dc2626',
+                      color: '#ffffff',
+                      border: '1.5px solid #dc2626',
+                      borderRadius: '0 0 6px 6px',
+                      cursor: 'pointer',
+                      fontFamily: "'BentonSans Book'",
+                      fontSize: '0.8rem',
+                      fontWeight: 500,
+                      transition: 'all 0.3s ease',
+                      textAlign: 'center',
+                      marginTop: '0',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.backgroundColor = '#b91c1c';
+                      e.target.style.borderColor = '#b91c1c';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor = '#dc2626';
+                      e.target.style.borderColor = '#dc2626';
+                    }}
+                  >
+                    🗑️ Clear History
+                  </button>
+                )}
           </div>
 
           {/* Returned to Student Tab */}
           <div>
             <button
               onClick={() => {
-                setActiveTab('sent-back');
+                handleTabChange('sent-back');
                 setSelected(null);
-                setNotes('');
-                toggleTabExpansion('sent-back');
               }}
               style={{
                 width: '100%',
@@ -1770,23 +1863,26 @@ export default function Librarian() {
               <span>🔄 Returned to Student ({getTabCount('sent-back')})</span>
               <span style={{ fontSize: '0.8rem' }}>{expandedTabs['sent-back'] ? '▼' : '▶'}</span>
             </button>
-            {expandedTabs['sent-back'] && (
-              <div style={{
-                maxHeight: '200px',
-                overflowY: 'auto',
-                marginBottom: '0.5rem',
-                border: `1px solid ${dark ? '#4a5568' : '#e2e8f0'}`,
-                borderRadius: '4px',
-                background: dark ? '#2a1a3a' : '#f9f9f9',
-              }}>
-                {filtered.map((s, i) => {
+            <div style={{
+              maxHeight: expandedTabs['sent-back'] ? '200px' : '0px',
+              overflowY: 'auto',
+              marginBottom: '0.5rem',
+              border: `1px solid ${dark ? '#4a5568' : '#e2e8f0'}`,
+              borderRadius: '4px',
+              background: dark ? '#2a1a3a' : '#f9f9f9',
+              transition: 'max-height 0.3s ease-in-out, opacity 0.3s ease-in-out',
+              opacity: expandedTabs['sent-back'] ? 1 : 0,
+              transform: expandedTabs['sent-back'] ? 'translateY(0)' : 'translateY(-10px)',
+              transformOrigin: 'top',
+            }}>
+                {getFilteredDataForTab('sent-back').map((s, i) => {
                   const displayInfo = getDisplayFilenameWithBreaks(s);
                   return (
                     <div
                       key={i}
                       style={{
                         ...styles.submissionItem(dark, selected?.filename === s.filename),
-                        ...(hoverIdx === i ? { background: dark ? '#444' : '#eaeaea' } : {}),
+                        ...(hoverStates['sent-back'] === i ? { background: dark ? '#444' : '#eaeaea' } : {}),
                         padding: '0.5rem 0.75rem',
                         margin: '0.25rem',
                         borderRadius: '4px',
@@ -1794,8 +1890,8 @@ export default function Librarian() {
                         fontSize: '0.8rem',
                         border: selected?.filename === s.filename ? '2px solid #4F2683' : '1px solid transparent',
                       }}
-                      onMouseEnter={() => setHoverIdx(i)}
-                      onMouseLeave={() => setHoverIdx(-1)}
+                      onMouseEnter={() => setHoverForTab('sent-back', i)}
+                      onMouseLeave={() => setHoverForTab('sent-back', -1)}
                       onClick={() => selectSubmission(s, i)}
                     >
                       <span style={{ 
@@ -1806,10 +1902,9 @@ export default function Librarian() {
                       </span>
                     </div>
                   );
-                })}
-              </div>
-            )}
-          </div>
+                                  })}
+                </div>
+            </div>
         </div>
       </div>
       {/* --- Hamburger Menu --- */}
@@ -2051,8 +2146,8 @@ export default function Librarian() {
                         minHeight: '120px',
                       }}
                       placeholder={isReadOnly ? "Read-only mode" : "Add notes or set a deadline"}
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
+                      value={getCurrentNotes()}
+                      onChange={handleNotesChange}
                       readOnly={isReadOnly}
                       rows={12}
                     />
@@ -2239,24 +2334,7 @@ export default function Librarian() {
                       >
                         ✅ Approve
                       </button>
-                      <button
-                        onClick={sendReturnedToFinalReview}
-                        disabled={isReadOnly}
-                        style={{
-                          ...styles.button(dark, btnHover),
-                          padding: '12px 20px',
-                          fontSize: '1rem',
-                          background: isReadOnly ? '#6c757d' : '#dc3545',
-                          opacity: isReadOnly ? 0.6 : 1,
-                          cursor: isReadOnly ? 'not-allowed' : 'pointer',
-                          minWidth: '140px',
-                          height: '45px',
-                        }}
-                        onMouseEnter={() => setBtnHover(true)}
-                        onMouseLeave={() => setBtnHover(false)}
-                      >
-                        🔄 Return for Final Review
-                      </button>
+
                       <button
                         onClick={sendBackToStudent}
                         disabled={isReadOnly}
@@ -2275,6 +2353,29 @@ export default function Librarian() {
                       >
                         🔙 Send Back to Student
                       </button>
+                      
+                      {/* Undo Submission button - only show for sent submissions */}
+                      {selected && selected.stage === 'Stage2' && selected.sentBy === atob(sessionStorage.getItem('authUser') || '') && (
+                        <button
+                          onClick={undoSubmission}
+                          disabled={isReadOnly}
+                          style={{
+                            ...styles.button(dark, btnHover),
+                            padding: '12px 20px',
+                            fontSize: '1rem',
+                            background: '#f59e0b',
+                            opacity: isReadOnly ? 0.6 : 1,
+                            cursor: isReadOnly ? 'not-allowed' : 'pointer',
+                            minWidth: '140px',
+                            height: '45px',
+                          }}
+                          onMouseEnter={() => setBtnHover(true)}
+                          onMouseLeave={() => setBtnHover(false)}
+                          title="Undo submission and move back to review queue"
+                        >
+                          ↩️ Undo Submission
+                        </button>
+                      )}
                     </div>
                   </div>
                 </>

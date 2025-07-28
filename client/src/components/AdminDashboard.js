@@ -47,6 +47,7 @@ export default function AdminDashboard() {
   });
   const [filtered, setFiltered] = useState([]);
   const [editingDeadline, setEditingDeadline] = useState(null); // submission index being edited
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   
   // Navigation and utilities
   const navigate = useNavigate(); // React Router navigation hook
@@ -465,6 +466,9 @@ export default function AdminDashboard() {
     const abstract = window.prompt('Enter abstract (optional):');
     
     // Update submission to Stage 4 (published)
+    // Note: This document will no longer appear in the reviewer's "sent" tab
+    // as it's now in Stage4 and published by admin
+    // The filtering logic will handle this automatically
     const updatedSubs = submissions.map(s => {
       if (s === submission) {
         return {
@@ -526,6 +530,8 @@ export default function AdminDashboard() {
       transition: 'background .3s,color .3s',
       fontSize,
       boxSizing: 'border-box',
+      overflowX: 'hidden',
+      maxWidth: '100vw',
     }),
     // Settings bar positioned in top-right corner
     settingsBar: {
@@ -580,6 +586,7 @@ export default function AdminDashboard() {
       flexDirection: 'column',
       alignItems: 'stretch',
       boxSizing: 'border-box',
+      overflowX: 'hidden',
     }),
     // Main heading styling
     h1: dark => ({
@@ -598,6 +605,9 @@ export default function AdminDashboard() {
       borderCollapse: 'collapse',
       marginTop: '1rem',
       background: 'none',
+      tableLayout: 'fixed',
+      minWidth: 0,
+      maxWidth: '100%',
     }),
     // Table header styling
     th: dark => ({
@@ -608,6 +618,10 @@ export default function AdminDashboard() {
       textAlign: 'left',
       fontWeight: 600,
       fontFamily: "'BentonSans Book'",
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      maxWidth: 0,
     }),
     // Table cell styling with empty state support
     td: (dark, empty) => ({
@@ -618,6 +632,10 @@ export default function AdminDashboard() {
       textAlign: 'left',
       fontFamily: "'BentonSans Book'",
       opacity: empty ? 0.7 : 1,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      maxWidth: 0,
     }),
   };
 
@@ -803,66 +821,230 @@ export default function AdminDashboard() {
             📋 Admin Logs ({submissions.filter(s => s.action).length})
           </button>
         </div>
-        {/* Advanced Filter Bar */}
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 18, background: dark ? '#2a1a3a' : '#f7f7fa', borderRadius: 10, padding: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.04)'
-        }}>
-          <input
-            type="text"
-            name="user"
-            value={filter.user || ''}
-            onChange={handleFilterChange}
-            placeholder="Filter by user"
-            aria-label="Filter by user"
-            style={{ padding: 8, borderRadius: 6, border: '1.5px solid #bbaed6', minWidth: 120 }}
-          />
-          <input
-            type="text"
-            name="status"
-            value={filter.status || ''}
-            onChange={handleFilterChange}
-            placeholder="Filter by status"
-            aria-label="Filter by status"
-            style={{ padding: 8, borderRadius: 6, border: '1.5px solid #bbaed6', minWidth: 120 }}
-          />
-          <input
-            type="date"
-            name="dateFrom"
-            value={filter.dateFrom || ''}
-            onChange={handleFilterChange}
-            aria-label="From date"
-            style={{ padding: 8, borderRadius: 6, border: '1.5px solid #bbaed6' }}
-          />
-          <input
-            type="date"
-            name="dateTo"
-            value={filter.dateTo || ''}
-            onChange={handleFilterChange}
-            aria-label="To date"
-            style={{ padding: 8, borderRadius: 6, border: '1.5px solid #bbaed6' }}
-          />
-          <button
-            onClick={handleClearFilters}
-            style={{ padding: '8px 16px', borderRadius: 6, background: '#e74c3c', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}
-            aria-label="Clear filters"
-          >
-            Clear
-          </button>
-          <span style={{ fontSize: 13, color: '#888', marginLeft: 8 }}>Filters are saved automatically</span>
+        {/* Filter Toggle Button */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18 }}>
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+              title="filter search settings"
+              style={{
+                padding: '6px 8px',
+                borderRadius: 6,
+                border: '1.5px solid #bbaed6',
+                background: dark ? '#4F2683' : '#a259e6',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                minWidth: '40px',
+                justifyContent: 'center'
+              }}
+            >
+              ⚙️
+              <span style={{ fontSize: '0.7rem' }}>▼</span>
+            </button>
+            
+            {/* Filter Dropdown Menu */}
+            {filterDropdownOpen && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: 4,
+                background: dark ? '#2a1a3a' : '#fff',
+                border: '1.5px solid #bbaed6',
+                borderRadius: 8,
+                padding: 12,
+                minWidth: 200,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                zIndex: 1000
+              }}>
+                {/* User Filter */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: '0.8rem', 
+                    fontWeight: 600, 
+                    color: dark ? '#e0d6f7' : '#201436',
+                    marginBottom: 4
+                  }}>
+                    User:
+                  </label>
+                  <input
+                    type="text"
+                    name="user"
+                    value={filter.user || ''}
+                    onChange={handleFilterChange}
+                    placeholder="Filter by user"
+                    style={{ 
+                      width: '100%',
+                      padding: '6px 8px', 
+                      borderRadius: 4, 
+                      border: '1px solid #bbaed6',
+                      background: dark ? '#1a1a2e' : '#f9f9f9',
+                      color: dark ? '#e0d6f7' : '#201436',
+                      fontSize: '0.8rem'
+                    }}
+                  />
+                </div>
+                
+                {/* Status Filter */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: '0.8rem', 
+                    fontWeight: 600, 
+                    color: dark ? '#e0d6f7' : '#201436',
+                    marginBottom: 4
+                  }}>
+                    Status:
+                  </label>
+                  <input
+                    type="text"
+                    name="status"
+                    value={filter.status || ''}
+                    onChange={handleFilterChange}
+                    placeholder="Filter by status"
+                    style={{ 
+                      width: '100%',
+                      padding: '6px 8px', 
+                      borderRadius: 4, 
+                      border: '1px solid #bbaed6',
+                      background: dark ? '#1a1a2e' : '#f9f9f9',
+                      color: dark ? '#e0d6f7' : '#201436',
+                      fontSize: '0.8rem'
+                    }}
+                  />
+                </div>
+                
+                {/* Date Range */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: '0.8rem', 
+                    fontWeight: 600, 
+                    color: dark ? '#e0d6f7' : '#201436',
+                    marginBottom: 4
+                  }}>
+                    Date Range:
+                  </label>
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                    <input
+                      type="date"
+                      name="dateFrom"
+                      value={filter.dateFrom || ''}
+                      onChange={handleFilterChange}
+                      style={{ 
+                        flex: 1,
+                        padding: '6px 8px', 
+                        borderRadius: 4, 
+                        border: '1px solid #bbaed6',
+                        background: dark ? '#1a1a2e' : '#f9f9f9',
+                        color: dark ? '#e0d6f7' : '#201436',
+                        fontSize: '0.8rem'
+                      }}
+                    />
+                    <input
+                      type="date"
+                      name="dateTo"
+                      value={filter.dateTo || ''}
+                      onChange={handleFilterChange}
+                      style={{ 
+                        flex: 1,
+                        padding: '6px 8px', 
+                        borderRadius: 4, 
+                        border: '1px solid #bbaed6',
+                        background: dark ? '#1a1a2e' : '#f9f9f9',
+                        color: dark ? '#e0d6f7' : '#201436',
+                        fontSize: '0.8rem'
+                      }}
+                    />
+                  </div>
+                </div>
+                
+                {/* Clear Filters Button */}
+                <button
+                  onClick={() => {
+                    handleClearFilters();
+                    setFilterDropdownOpen(false);
+                  }}
+                  style={{ 
+                    width: '100%',
+                    padding: '8px 12px', 
+                    borderRadius: 6, 
+                    background: '#e74c3c', 
+                    color: '#fff', 
+                    border: 'none', 
+                    fontWeight: 600, 
+                    cursor: 'pointer',
+                    fontSize: '0.8rem'
+                  }}
+                >
+                  Clear Filters
+                </button>
+                
+                <div style={{ 
+                  fontSize: '0.7rem', 
+                  color: '#888', 
+                  marginTop: 8, 
+                  textAlign: 'center',
+                  fontStyle: 'italic'
+                }}>
+                  Filters are saved automatically
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        <div style={{ overflowX: 'auto', width: '100%' }}>
+        <div 
+          className="admin-table-container"
+          style={{ 
+            overflowY: 'auto', 
+            overflowX: 'hidden',
+            maxHeight: '60vh', 
+            width: '100%',
+            border: `1px solid ${dark ? '#555' : '#ccc'}`,
+            borderRadius: '8px',
+            // Custom scrollbar styling to match purple gradient
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#7c3aed #4F2683',
+            minWidth: 0,
+            maxWidth: '100%',
+            boxSizing: 'border-box'
+          }}
+        >
+          <style>{`
+            .admin-table-container::-webkit-scrollbar {
+              width: 8px;
+            }
+            .admin-table-container::-webkit-scrollbar-track {
+              background: #4F2683;
+              border-radius: 4px;
+            }
+            .admin-table-container::-webkit-scrollbar-thumb {
+              background: linear-gradient(180deg, #4F2683 0%, #7c3aed 50%, #a855f7 100%);
+              border-radius: 4px;
+              border: 1px solid #4F2683;
+            }
+            .admin-table-container::-webkit-scrollbar-thumb:hover {
+              background: linear-gradient(180deg, #5b2b8f 0%, #8b5cf6 50%, #c084fc 100%);
+            }
+          `}</style>
           <table style={styles.table(dark)}>
             <thead>
               <tr>
-                <th style={styles.th(dark)}>Time</th>
-                <th style={styles.th(dark)}>User</th>
-                <th style={styles.th(dark)}>Stage</th>
-                <th style={styles.th(dark)}>Progress</th>
-                <th style={styles.th(dark)}>Filename</th>
-                <th style={styles.th(dark)}>Notes</th>
-                <th style={styles.th(dark)}>Actions</th>
-                <th style={styles.th(dark)}>Deadline</th>
-                <th style={styles.th(dark)}>Calendar</th>
+                <th style={{...styles.th(dark), width: '12%'}}>Time</th>
+                <th style={{...styles.th(dark), width: '10%'}}>User</th>
+                <th style={{...styles.th(dark), width: '8%'}}>Stage</th>
+                <th style={{...styles.th(dark), width: '15%'}}>Progress</th>
+                <th style={{...styles.th(dark), width: '15%'}}>Filename</th>
+                <th style={{...styles.th(dark), width: '12%'}}>Notes</th>
+                <th style={{...styles.th(dark), width: '15%'}}>Actions</th>
+                <th style={{...styles.th(dark), width: '8%'}}>Deadline</th>
+                <th style={{...styles.th(dark), width: '5%'}}>Calendar</th>
               </tr>
             </thead>
             <tbody>
